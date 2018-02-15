@@ -31,7 +31,6 @@ SQLURI=""
 
 logprint() {
   echo "$(date +%D-%T): $*" >> $LOGFILE
-#  echo $*
 }
 
 email_alert() {
