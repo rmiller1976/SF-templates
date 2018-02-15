@@ -38,11 +38,8 @@ set -euo pipefail
 #
 #********************************************************
 
-
-
-
 # Set variables
-readonly VERSION="1.0 February 1, 2018"
+readonly VERSION="1.X February 1, 2018"
 PROG="${0##*/}"
 readonly NOW=$(date +"%Y%m%d-%H%M%S")
 readonly SFHOME="${SFHOME:-/opt/starfish}"
