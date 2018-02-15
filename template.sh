@@ -58,6 +58,7 @@ EMAILFROM=root
 # Variables for SQL query scripts
 QUERY=""
 SQLURI=""
+SQLOUTPUT=""
 
 logprint() {
   echo "$(date +%D-%T): $*" >> $LOGFILE
@@ -89,7 +90,7 @@ usage () {
   fi
   cat <<EOF
 
-User Size Change Rate Report
+Starfish Report
 $VERSION
 
 $PROG [options] 
@@ -210,37 +211,59 @@ check_postgres_login() {
 }
 
 # Used for query scripts
-#build_sql_query() {
-#  logprint "Building SQL query"
-#  local volumes_query=""
-#  if [[ ${#SFVOLUMES[@]} > 0 ]]; then
-#    volumes_query="WHERE (volume_name = '${SFVOLUMES[0]}')"
-#    for volume in "${SFVOLUMES[@]:1}"
-#      do
-#        volumes_query="$volumes_query OR (volume_name = '$volume')"
-#      done
-#  fi
-#  QUERY=""
-#  logprint "SQL query set"
-#  logprint $QUERY
-#}
+build_sql_query() {
+  logprint "Building SQL query"
+  local volumes_query=""
+  if [[ ${#SFVOLUMES[@]} > 0 ]]; then
+    volumes_query="WHERE (volume_name = '${SFVOLUMES[0]}')"
+    for volume in "${SFVOLUMES[@]:1}"
+      do
+        volumes_query="$volumes_query OR (volume_name = '$volume')"
+      done
+  fi
+  QUERY="SELECT
+      volume_name as \"Volume\",
+      user_name as \"User Name\",
+      group_name as \"Group Name\",
+      SUM(ROUND((size)::DECIMAL/(1024*1024*1024), 2)) AS \"size (GB)\",
+      SUM(count)::BIGINT AS \"Number of Files\",
+      SUM(ROUND((cost)::DECIMAL,2)) AS \"Cost($)\"
+    FROM sf_reports.last_time_generic_current $volumes_query
+    GROUP BY user_name,volume_name,size,group_name
+    ORDER BY size DESC
+    LIMIT 20"
+  logprint "SQL query set"
+  logprint $QUERY
+}
 
-#execute_sql_query() {
-#  logprint "executing SQL query"
-#  set +e
-#  SQL_OUTPUT=`psql $SQLURI -F, -t -A -c "$QUERY"`
-#  set -e
-#  logprint "SQL Query executed"
-#}
+execute_sql_query() {
+  local errorcode
+  logprint "executing SQL query"
+  set +e
+# run psql. -F specifies delimiter, -A unaligned output, -H is HTML output
+  SQL_OUTPUT=`psql $SQLURI -F, -A -H -c "$QUERY" > $REPORTFILE 2>&1
+  errorcode=$?
+  set -e
+  if [[ $errorcode -eq 0 ]]; then
+    logprint "SQL query executed successfully"
+  else
+    logprint "SQL query failed with errorcode: $errorcode. Exiting.."
+    echo -e "SQL query failed with errorcode: $errorcode. Exiting.."
+    email_alert "SQL query failed with errorcode: $errorcode"
+    exit 1
+  fi
+}
 
-#format_results() {
-#  logprint "Formatting results"
+format_results() {
+  logprint "Formatting results"
+echo -e $SQL_OUTPUT > $REPORTFILE
+  
 #  DAY=`date '+%Y%m%d'`
 #  `echo "$SQL_OUTPUT" | awk -v emfrom="$EMAILFROM" -v emto="$EMAIL" -F',' 'BEGIN \
 #    {
 #      print "From: " emfrom "\n<br>"
 #      print "To: " emto "\n<br>"
-#      printf ("%s\n<br>", "Subject: User size listing with cost report", ENVIRON["DAY"])
+#      printf ("%s\n<br>", "Subject: Starfish report")
 #      print "<html><body><table border=1 cellspace=0 cellpadding=3>"
 #      print "<td>Username</td><td>Volume</td><td>Start Date</td><td>End Date</td><td>Percent Delta</td><td>Previous Size GB</td><td>Current Size GB</td><td>Delta Size GB</td>"
 #    } 
@@ -263,10 +286,13 @@ check_postgres_login() {
 #      print "<br />"
 #    }' > $REPORTFILE` 
 #  logprint "Results formatted"
-#}
+}
 
 email_report() {
-#  local subject="Report: User size listing with cost"
+  if [[ ${#SFVOLUMES[@]} -eq 0 ]]; then
+    SFVOLUMES+="[All]"
+  fi
+  local subject="Report: Starfish Report"
   logprint "Emailing results to $EMAIL"
   (echo -e "
 From: $EMAILFROM
