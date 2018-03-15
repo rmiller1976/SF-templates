@@ -208,9 +208,9 @@ check_postgres_login() {
 
 build_sql_query() {
   logprint "Building SQL query"
-  local volumes_query=""
+  local volumes_query="(volume_name is not null)"
   if [[ ${#SFVOLUMES[@]} > 0 ]]; then
-    volumes_query="WHERE (volume_name = '${SFVOLUMES[0]}')"
+    volumes_query="(volume_name = '${SFVOLUMES[0]}')"
     for volume in "${SFVOLUMES[@]:1}"
       do
         volumes_query="$volumes_query OR (volume_name = '$volume')"
